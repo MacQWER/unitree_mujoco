@@ -156,9 +156,9 @@ class Go2OnnxController:
         for i in range(12):
             self.cmd.motor_cmd[i].q = phase * default_qpos[i+7] + (
                 1 - phase) * stand_down_joint_pos[i]
-            self.cmd.motor_cmd[i].kp = phase * 50.0 + (1 - phase) * 20.0
+            self.cmd.motor_cmd[i].kp = phase * 60.0 + (1 - phase) * 20.0
             self.cmd.motor_cmd[i].dq = 0.0
-            self.cmd.motor_cmd[i].kd = 3.5
+            self.cmd.motor_cmd[i].kd = 5.0
             self.cmd.motor_cmd[i].tau = 0.0
 
         self.cmd.crc = self.crc.Crc(self.cmd)

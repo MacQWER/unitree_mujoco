@@ -9,8 +9,8 @@ stand_down_joint_pos = np.array([
     0.0473455, 1.22187, -2.44375, -0.0473455, 1.22187, -2.44375
 ], dtype=float)
 
-Kp = 50.0
-Kd = 2.8
+Kp = 60.0
+Kd = 5.0
 sim_dt = 0.002
 ctrl_dt = 0.02
 
