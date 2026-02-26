@@ -63,9 +63,9 @@ if __name__ == '__main__':
             for i in range(12):
                 cmd.motor_cmd[i].q = phase * stand_up_joint_pos[i] + (
                     1 - phase) * stand_down_joint_pos[i]
-                cmd.motor_cmd[i].kp = phase * 60.0 + (1 - phase) * 20.0
+                cmd.motor_cmd[i].kp = phase * 50.0 + (1 - phase) * 20.0
                 cmd.motor_cmd[i].dq = 0.0
-                cmd.motor_cmd[i].kd = 5.0
+                cmd.motor_cmd[i].kd = 3.5
                 cmd.motor_cmd[i].tau = 0.0
         else:
             # Then stand down
@@ -73,9 +73,9 @@ if __name__ == '__main__':
             for i in range(12):
                 cmd.motor_cmd[i].q = phase * stand_down_joint_pos[i] + (
                     1 - phase) * stand_up_joint_pos[i]
-                cmd.motor_cmd[i].kp = 60.0
+                cmd.motor_cmd[i].kp = 50.0
                 cmd.motor_cmd[i].dq = 0.0
-                cmd.motor_cmd[i].kd = 5.0
+                cmd.motor_cmd[i].kd = 3.5
                 cmd.motor_cmd[i].tau = 0.0
 
         cmd.crc = crc.Crc(cmd)
