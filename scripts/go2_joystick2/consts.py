@@ -29,8 +29,8 @@ ctrl_dt = 0.02
 
 # Joystick2 policy scales from your verified play_go2_joystick2.py.
 action_scale = np.array([0.5, 0.5, 0.5] * 4, dtype=np.float32)
-command = np.array([-1.0, 0.0, 0.0], dtype=np.float32)
-velocity_is_world_frame = False
+command = np.array([0.0, 0.8, 0.0], dtype=np.float32)
+velocity_is_world_frame = True
 
 # Policy-time PD gains used for lowcmd.
 Kp = 35.0
