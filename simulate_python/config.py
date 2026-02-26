@@ -10,5 +10,26 @@ JOYSTICK_DEVICE = 0 # Joystick number
 PRINT_SCENE_INFORMATION = True # Print link, joint and sensors information of robot
 ENABLE_ELASTIC_BAND = False # Virtual spring band, used for lifting h1
 
-SIMULATE_DT = 0.005  # Need to be larger than the runtime of viewer.sync()
+SIMULATE_DT = 0.002  # Need to be larger than the runtime of viewer.sync()
 VIEWER_DT = 0.02  # 50 fps for viewer
+
+# Headless / recording options
+HEADLESS_EGL = True  # True: set MUJOCO_GL=egl and run without interactive viewer
+MAX_SIM_TIME = 20.0  # seconds, <=0 means run until viewer closes (or forever in headless)
+
+ENABLE_RECORDING = True
+RECORD_PATH = "./record.mp4"
+RECORD_FPS = 50
+RECORD_WIDTH = 640
+RECORD_HEIGHT = 480
+RECORD_AUTO_START = True
+RECORD_START_TIME_SEC = 0.0  # used when RECORD_AUTO_START is False
+RECORD_END_TIME_SEC = -1.0  # <=0 means no end-time limit
+RECORD_DURATION_SEC = -1.0  # >0 overrides RECORD_END_TIME_SEC
+
+# Camera tracking for recording
+TRACKING_CAMERA = True
+TRACKING_BODY_NAME = "base_link"  # fallback to "torso_link" if not found
+TRACKING_DISTANCE = 2.5
+TRACKING_AZIMUTH = 120.0
+TRACKING_ELEVATION = -20.0
