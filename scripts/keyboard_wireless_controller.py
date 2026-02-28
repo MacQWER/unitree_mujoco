@@ -10,11 +10,19 @@ from unitree_sdk2py.idl.unitree_go.msg.dds_ import WirelessController_
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.abspath(os.path.join(_HERE, ".."))
-_SIM_ROOT = os.path.join(_ROOT, "simulate_python")
-if _SIM_ROOT not in sys.path:
-    sys.path.insert(0, _SIM_ROOT)
+_CONFIG_PATH = os.path.join(_ROOT, "simulate_python", "config.py")
 
-import config
+def _load_config(path):
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"config.py not found: {path}")
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("unitree_config", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+config = _load_config(_CONFIG_PATH)
 
 
 KEY_BITS = {
@@ -113,9 +121,9 @@ def main():
                 elif event.key == pygame.K_s:
                     vx -= config.KEYBOARD_CMD_STEP_VX
                 elif event.key == pygame.K_d:
-                    vy += config.KEYBOARD_CMD_STEP_VY
-                elif event.key == pygame.K_a:
                     vy -= config.KEYBOARD_CMD_STEP_VY
+                elif event.key == pygame.K_a:
+                    vy += config.KEYBOARD_CMD_STEP_VY
                 elif event.key == pygame.K_e:
                     w -= config.KEYBOARD_CMD_STEP_W
                 elif event.key == pygame.K_q:
@@ -146,7 +154,7 @@ def main():
         _render_line(
             screen,
             font,
-            "W/S: vx  A/D: vy  Q/E: w (Q=left)  Space: zero  Esc: quit",
+            "W/S: vx  A/D: vy (A=left)  Q/E: w (Q=left)  Space: zero  Esc: quit",
             56,
         )
         _render_line(

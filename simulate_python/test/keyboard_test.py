@@ -41,9 +41,9 @@ while True:
             elif event.key == pygame.K_s:
                 vx -= config.KEYBOARD_CMD_STEP_VX
             elif event.key == pygame.K_d:
-                vy += config.KEYBOARD_CMD_STEP_VY
-            elif event.key == pygame.K_a:
                 vy -= config.KEYBOARD_CMD_STEP_VY
+            elif event.key == pygame.K_a:
+                vy += config.KEYBOARD_CMD_STEP_VY
             elif event.key == pygame.K_e:
                 w -= config.KEYBOARD_CMD_STEP_W
             elif event.key == pygame.K_q:
