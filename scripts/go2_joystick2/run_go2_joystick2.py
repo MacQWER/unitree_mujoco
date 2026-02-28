@@ -41,7 +41,8 @@ def main():
         elif running_time < stand_duration + hold_duration:
             controller.hold_joint_pos(target_qpos=target_qpos, kp=stand_kp_up, kd=stand_kd)
         else:
-            controller.joystick_control()
+            if not controller.shutdown_step(sim_dt):
+                controller.joystick_control()
 
         time_until_next_step = sim_dt - (time.perf_counter() - step_start)
         if time_until_next_step > 0:

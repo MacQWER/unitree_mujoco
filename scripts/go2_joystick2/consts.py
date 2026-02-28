@@ -31,10 +31,13 @@ ctrl_dt = 0.02
 action_scale = np.array([0.5, 0.5, 0.5] * 4, dtype=np.float32)
 command = np.array([1.0, 0.0, 0.5], dtype=np.float32)
 velocity_is_world_frame = True
+cmd_max_vx = 1.5
+cmd_max_vy = 0.80
+cmd_max_w = 1.2
 
 # Policy-time PD gains used for lowcmd.
 Kp = 35.0
-Kd = 0.5
+Kd = 1.0
 
 stand_kp_up = 50.0
 stand_kp_down = 20.0

@@ -13,8 +13,10 @@ from consts import (
     sim_dt,
     ctrl_dt,
     action_scale,
-    command,
     velocity_is_world_frame,
+    cmd_max_vx,
+    cmd_max_vy,
+    cmd_max_w,
     Kp,
     Kd,
     stand_kp_up,
@@ -30,6 +32,7 @@ from unitree_sdk2py.idl.unitree_go.msg.dds_ import (
     LowCmd_,
     LowState_,
     SportModeState_,
+    WirelessController_,
 )
 from unitree_sdk2py.utils.crc import CRC
 
@@ -47,7 +50,7 @@ class Go2Joystick2OnnxController:
 
         self._default_angles = default_qpos[7:].astype(np.float32)
         self._action_scale = action_scale.astype(np.float32)
-        self._command = command.astype(np.float32)
+        self._command = np.zeros(3, dtype=np.float32)
 
         self._last_action = np.zeros(12, dtype=np.float32)
         self._anchor_action = np.zeros(12, dtype=np.float32)
@@ -66,6 +69,11 @@ class Go2Joystick2OnnxController:
         self.lock = threading.Lock()
         self.latest_low_state = None
         self.latest_high_state = None
+        self.latest_wireless = None
+        self._wireless_keys = 0
+        self._last_start_select = False
+        self._shutdown_active = False
+        self._shutdown_t = 0.0
 
         self.pub = ChannelPublisher("rt/lowcmd", LowCmd_)
         self.pub.Init()
@@ -87,8 +95,29 @@ class Go2Joystick2OnnxController:
 
         low_state_suber = ChannelSubscriber("rt/lowstate", LowState_)
         high_state_suber = ChannelSubscriber("rt/sportmodestate", SportModeState_)
+        wireless_suber = ChannelSubscriber("rt/wirelesscontroller", WirelessController_)
         low_state_suber.Init(self.LowStateHandler, 10)
         high_state_suber.Init(self.HighStateHandler, 10)
+        wireless_suber.Init(self.WirelessHandler, 10)
+
+        self._key_bits = {
+            "R1": 0,
+            "L1": 1,
+            "start": 2,
+            "select": 3,
+            "R2": 4,
+            "L2": 5,
+            "F1": 6,
+            "F2": 7,
+            "A": 8,
+            "B": 9,
+            "X": 10,
+            "Y": 11,
+            "up": 12,
+            "right": 13,
+            "down": 14,
+            "left": 15,
+        }
 
     def LowStateHandler(self, msg: LowState_):
         with self.lock:
@@ -105,6 +134,17 @@ class Go2Joystick2OnnxController:
                 "velocity": np.array(msg.velocity, dtype=np.float32),
             }
 
+    def WirelessHandler(self, msg: WirelessController_):
+        with self.lock:
+            self.latest_wireless = {
+                "keys": int(msg.keys),
+                "lx": float(msg.lx),
+                "ly": float(msg.ly),
+                "rx": float(msg.rx),
+                "ry": float(msg.ry),
+            }
+            self._wireless_keys = int(msg.keys)
+
     def _get_states(self):
         with self.lock:
             if self.latest_low_state is None:
@@ -112,6 +152,57 @@ class Go2Joystick2OnnxController:
             low = self.latest_low_state.copy()
             high = None if self.latest_high_state is None else self.latest_high_state.copy()
         return low, high
+
+    def _update_command_from_wireless(self):
+        with self.lock:
+            if self.latest_wireless is None:
+                return
+            lx = float(self.latest_wireless["lx"])
+            ly = float(self.latest_wireless["ly"])
+            rx = float(self.latest_wireless["rx"])
+
+        vx = float(np.clip(ly, -1.0, 1.0)) * cmd_max_vx
+        vy = float(np.clip(lx, -1.0, 1.0)) * cmd_max_vy
+        w = float(np.clip(rx, -1.0, 1.0)) * cmd_max_w
+        self._command = np.array([vx, vy, w], dtype=np.float32)
+
+    def _key_pressed(self, key_name: str) -> bool:
+        bit = self._key_bits[key_name]
+        return (self._wireless_keys & (1 << bit)) != 0
+
+    def _shutdown_requested(self) -> bool:
+        start_select = self._key_pressed("start") and self._key_pressed("select")
+        requested = start_select and not self._last_start_select
+        self._last_start_select = start_select
+        return requested
+
+    def shutdown_step(self, dt: float) -> bool:
+        if self._shutdown_requested():
+            self._shutdown_active = True
+            self._shutdown_t = 0.0
+
+        if not self._shutdown_active:
+            return False
+
+        self._shutdown_t += dt
+        stand_up_duration = 2.0
+        hold_duration = 0.6
+        stand_down_duration = 2.0
+
+        target_qpos = default_qpos[7:].astype(np.float32)
+        if self._shutdown_t < stand_up_duration:
+            phase = float(np.tanh(self._shutdown_t / 1.0))
+            self.stand_control(phase=phase, target_qpos=target_qpos)
+        elif self._shutdown_t < stand_up_duration + hold_duration:
+            self.hold_joint_pos(target_qpos, kp=stand_kp_up, kd=stand_kd)
+        elif self._shutdown_t < stand_up_duration + hold_duration + stand_down_duration:
+            t = self._shutdown_t - stand_up_duration - hold_duration
+            phase = float(1.0 - np.tanh(t / 1.0))
+            self.stand_control(phase=phase, target_qpos=target_qpos)
+        else:
+            self.hold_joint_pos(stand_down_joint_pos, kp=stand_kp_down, kd=stand_kd)
+
+        return True
 
     def _joint_angles_mujoco_order(self, low_state: dict) -> np.ndarray:
         return np.array([low_state["motor_q"][n] for n in idx_map], dtype=np.float32)
@@ -225,6 +316,8 @@ class Go2Joystick2OnnxController:
             low_state, high_state = self._get_states()
             if low_state is None:
                 return
+
+            self._update_command_from_wireless()
 
             anchor_obs = self._build_anchor_obs(low_state)
             self._anchor_action = self._infer_anchor(anchor_obs)

@@ -83,7 +83,7 @@ class UnitreeSdk2Bridge:
             target=self.PublishWirelessController,
             name="sim_wireless_controller",
         )
-        self.WirelessControllerThread.Start()
+        self._wireless_thread_started = False
 
         self.low_cmd_suber = ChannelSubscriber(TOPIC_LOWCMD, LowCmd_)
         self.low_cmd_suber.Init(self.LowCmdHandler, 10)
@@ -299,6 +299,7 @@ class UnitreeSdk2Bridge:
         if joystick_count > 0:
             self.joystick = pygame.joystick.Joystick(device_id)
             self.joystick.init()
+            self._start_wireless_thread_once()
         else:
             print("No gamepad detected.")
             sys.exit()
@@ -350,6 +351,12 @@ class UnitreeSdk2Bridge:
             }
         else:
             print("Unsupported gamepad. ")
+
+    def _start_wireless_thread_once(self):
+        if self._wireless_thread_started:
+            return
+        self.WirelessControllerThread.Start()
+        self._wireless_thread_started = True
 
     def PrintSceneInformation(self):
         print(" ")
