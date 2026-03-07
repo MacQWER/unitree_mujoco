@@ -37,8 +37,8 @@ cmd_max_w = 1.2
 
 # Policy-time PD gains used for lowcmd.
 Kp = 35.0
-Kd = 1.0
+Kd = 0.5
 
-stand_kp_up = 50.0
+stand_kp_up = 60.0
 stand_kp_down = 20.0
 stand_kd = 3.5

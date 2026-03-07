@@ -74,6 +74,9 @@ class Go2Joystick2OnnxController:
         self._last_start_select = False
         self._shutdown_active = False
         self._shutdown_t = 0.0
+        self._standup_initialized = False
+        self._standup_t = 0.0
+        self._standup_start_qpos = np.zeros(12, dtype=np.float32)
 
         self.pub = ChannelPublisher("rt/lowcmd", LowCmd_)
         self.pub.Init()
@@ -310,6 +313,33 @@ class Go2Joystick2OnnxController:
 
         self.cmd.crc = self.crc.Crc(self.cmd)
         self.pub.Write(self.cmd)
+
+    def hold_default_qpos(self, kp: float = stand_kp_up, kd: float = stand_kd):
+        # default_qpos is in MuJoCo joint order, so use _write_ctrl for correct mapping.
+        ctrl = default_qpos[7:].astype(np.float32)
+        self._write_ctrl(ctrl, kp=kp, kd=kd)
+        self.cmd.crc = self.crc.Crc(self.cmd)
+        self.pub.Write(self.cmd)
+
+    def standup_to_default_step(self, dt: float, duration: float) -> bool:
+        low_state, _ = self._get_states()
+        if low_state is None:
+            return False
+
+        if not self._standup_initialized:
+            self._standup_start_qpos = self._joint_angles_mujoco_order(low_state)
+            self._standup_t = 0.0
+            self._standup_initialized = True
+
+        self._standup_t = min(self._standup_t + dt, duration)
+        alpha = 1.0 if duration <= 1e-6 else float(self._standup_t / duration)
+        target_qpos = default_qpos[7:].astype(np.float32)
+        ctrl = (1.0 - alpha) * self._standup_start_qpos + alpha * target_qpos
+
+        self._write_ctrl(ctrl, kp=stand_kp_up, kd=stand_kd)
+        self.cmd.crc = self.crc.Crc(self.cmd)
+        self.pub.Write(self.cmd)
+        return alpha >= 1.0
 
     def joystick_control(self):
         if self._counter % self._n_substeps == 0:
