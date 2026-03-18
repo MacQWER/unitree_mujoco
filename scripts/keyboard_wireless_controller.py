@@ -125,20 +125,20 @@ def main():
                 elif event.key == pygame.K_a:
                     vy += config.KEYBOARD_CMD_STEP_VY
                 elif event.key == pygame.K_e:
-                    w -= config.KEYBOARD_CMD_STEP_W
+                    w -= config.KEYBOARD_CMD_STEP_YAW
                 elif event.key == pygame.K_q:
-                    w += config.KEYBOARD_CMD_STEP_W
+                    w += config.KEYBOARD_CMD_STEP_YAW
 
         vx = _clamp(vx, -config.KEYBOARD_CMD_MAX_VX, config.KEYBOARD_CMD_MAX_VX)
         vy = _clamp(vy, -config.KEYBOARD_CMD_MAX_VY, config.KEYBOARD_CMD_MAX_VY)
-        w = _clamp(w, -config.KEYBOARD_CMD_MAX_W, config.KEYBOARD_CMD_MAX_W)
+        w = _clamp(w, -config.KEYBOARD_CMD_MAX_YAW, config.KEYBOARD_CMD_MAX_YAW)
 
         keys = pygame.key.get_pressed()
         msg.keys = _build_key_value(keys)
 
         msg.lx = _safe_div(vy, config.KEYBOARD_CMD_MAX_VY)
         msg.ly = _safe_div(vx, config.KEYBOARD_CMD_MAX_VX)
-        msg.rx = _safe_div(w, config.KEYBOARD_CMD_MAX_W)
+        msg.rx = _safe_div(w, config.KEYBOARD_CMD_MAX_YAW)
         msg.ry = float(keys[pygame.K_i]) - float(keys[pygame.K_k])
 
         pub.Write(msg)
@@ -148,13 +148,13 @@ def main():
         _render_line(
             screen,
             font,
-            f"vx={vx:+.2f}  vy={vy:+.2f}  w={w:+.2f}",
+            f"vx={vx:+.2f}  vy={vy:+.2f}  yaw={w:+.2f}",
             32,
         )
         _render_line(
             screen,
             font,
-            "W/S: vx  A/D: vy (A=left)  Q/E: w (Q=left)  Space: zero  Esc: quit",
+            "W/S: vx  A/D: vy (A=left)  Q/E: yaw (Q=left)  Space: zero  Esc: quit",
             56,
         )
         _render_line(

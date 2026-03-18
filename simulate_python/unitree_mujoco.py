@@ -85,7 +85,7 @@ def SimulationThread():
     else:
         print(
             "Wireless command mode: fixed "
-            f"(vx={config.FIXED_WIRELESS_CMD_VX}, vy={config.FIXED_WIRELESS_CMD_VY}, w={config.FIXED_WIRELESS_CMD_W})"
+            f"(vx={config.FIXED_WIRELESS_CMD_VX}, vy={config.FIXED_WIRELESS_CMD_VY}, yaw={config.FIXED_WIRELESS_CMD_YAW})"
         )
 
     if config.USE_JOYSTICK:

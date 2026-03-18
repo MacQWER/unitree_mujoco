@@ -45,13 +45,13 @@ while True:
             elif event.key == pygame.K_a:
                 vy += config.KEYBOARD_CMD_STEP_VY
             elif event.key == pygame.K_e:
-                w -= config.KEYBOARD_CMD_STEP_W
+                w -= config.KEYBOARD_CMD_STEP_YAW
             elif event.key == pygame.K_q:
-                w += config.KEYBOARD_CMD_STEP_W
+                w += config.KEYBOARD_CMD_STEP_YAW
 
     vx = max(-config.KEYBOARD_CMD_MAX_VX, min(config.KEYBOARD_CMD_MAX_VX, vx))
     vy = max(-config.KEYBOARD_CMD_MAX_VY, min(config.KEYBOARD_CMD_MAX_VY, vy))
-    w = max(-config.KEYBOARD_CMD_MAX_W, min(config.KEYBOARD_CMD_MAX_W, w))
+    w = max(-config.KEYBOARD_CMD_MAX_YAW, min(config.KEYBOARD_CMD_MAX_YAW, w))
 
     keys = pygame.key.get_pressed()
     buttons = {
@@ -64,7 +64,7 @@ while True:
     }
 
     print(
-        f"vx={vx:+.2f} vy={vy:+.2f} w={w:+.2f} buttons={buttons}",
+        f"vx={vx:+.2f} vy={vy:+.2f} yaw={w:+.2f} buttons={buttons}",
         end="\r",
     )
     clock.tick(20)

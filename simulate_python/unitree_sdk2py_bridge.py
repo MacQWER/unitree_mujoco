@@ -256,7 +256,7 @@ class UnitreeSdk2Bridge:
         if self._use_fixed_wireless_command():
             vx = float(config.FIXED_WIRELESS_CMD_VX)
             vy = float(config.FIXED_WIRELESS_CMD_VY)
-            w = float(config.FIXED_WIRELESS_CMD_W)
+            yaw = float(config.FIXED_WIRELESS_CMD_YAW)
 
             self.wireless_controller.keys = 0
             self.wireless_controller.lx = float(
@@ -266,7 +266,7 @@ class UnitreeSdk2Bridge:
                 np.clip(vx / max(config.KEYBOARD_CMD_MAX_VX, 1e-6), -1.0, 1.0)
             )
             self.wireless_controller.rx = float(
-                np.clip(w / max(config.KEYBOARD_CMD_MAX_W, 1e-6), -1.0, 1.0)
+                np.clip(yaw / max(config.KEYBOARD_CMD_MAX_YAW, 1e-6), -1.0, 1.0)
             )
             self.wireless_controller.ry = 0.0
 
