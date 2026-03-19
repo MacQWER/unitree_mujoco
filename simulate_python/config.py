@@ -7,13 +7,13 @@ USE_JOYSTICK = 0 # Simulate Unitree WirelessController using a gamepad
 JOYSTICK_TYPE = "xbox" # support "xbox" and "switch" gamepad layout
 JOYSTICK_DEVICE = 0 # Joystick number
 
-# Keyboard publisher settings (used by scripts/keyboard_wireless_controller.py)
-USE_KEYBOARD = 0 # Use external keyboard publisher scripts/keyboard_wireless_controller.py
+# Keyboard publisher settings (used by scripts/go2_joystick2/keyboard_wireless_controller.py)
+USE_KEYBOARD = 1 # Use external keyboard publisher scripts/go2_joystick2/keyboard_wireless_controller.py
 KEYBOARD_CMD_MAX_VX = 0.5
 KEYBOARD_CMD_MAX_VY = 0.2
 KEYBOARD_CMD_MAX_YAW = 3.141592653589793
-KEYBOARD_CMD_STEP_VX = 0.3
-KEYBOARD_CMD_STEP_VY = 0.2
+KEYBOARD_CMD_STEP_VX = 0.25
+KEYBOARD_CMD_STEP_VY = 0.1
 KEYBOARD_CMD_STEP_YAW = 0.3
 
 # Fixed wireless command used when USE_JOYSTICK == 0 and USE_KEYBOARD == 0.
@@ -28,8 +28,8 @@ SIMULATE_DT = 0.002  # Need to be larger than the runtime of viewer.sync()
 VIEWER_DT = 0.02  # 50 fps for viewer
 
 # Headless / recording options
-HEADLESS_EGL = True  # True: set MUJOCO_GL=egl and run without interactive viewer
-MAX_SIM_TIME = 20.0  # seconds, <=0 means run until viewer closes (or forever in headless)
+HEADLESS_EGL = False  # True: set MUJOCO_GL=egl and run without interactive viewer
+MAX_SIM_TIME = -1.0  # seconds, <=0 means run until viewer closes (or forever in headless)
 
 ENABLE_RECORDING = True
 RECORD_PATH = "./record.mp4"

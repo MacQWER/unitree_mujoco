@@ -1,4 +1,7 @@
+import json
+import os
 import threading
+import time
 from typing import Optional
 
 import numpy as np
@@ -29,6 +32,7 @@ from consts import (
     stand_kp_down,
     stand_kd,
 )
+from obs_debug import DEBUG_OBS_PATH
 
 from unitree_sdk2py.core.channel import ChannelPublisher, ChannelSubscriber
 from unitree_sdk2py.idl.default import (
@@ -94,6 +98,8 @@ class Go2Joystick2OnnxController:
         self._standup_initialized = False
         self._standup_t = 0.0
         self._standup_start_qpos = np.zeros(12, dtype=np.float32)
+        self._debug_obs_path = DEBUG_OBS_PATH
+        self._last_missing_state_log_t = 0.0
 
         self.pub = ChannelPublisher("rt/lowcmd", LowCmd_)
         self.pub.Init()
@@ -254,7 +260,24 @@ class Go2Joystick2OnnxController:
             np.float32
         )
 
+    def _log_missing_state(self, low_state: Optional[dict], high_state: Optional[dict]):
+        now = time.time()
+        if now - self._last_missing_state_log_t < 1.0:
+            return
+        self._last_missing_state_log_t = now
+
+        missing = []
+        if low_state is None:
+            missing.append("low_state")
+        if high_state is None:
+            missing.append("high_state")
+        if missing:
+            print(
+                f"[Go2Joystick2OnnxController] _build_obs missing {', '.join(missing)}"
+            )
+
     def _build_obs(self, low_state: dict, high_state: dict) -> np.ndarray:
+        self._log_missing_state(low_state, high_state)
         if high_state is None:
             v_local = np.zeros(3, dtype=np.float32)
         else:
@@ -299,6 +322,36 @@ class Go2Joystick2OnnxController:
 
     def _build_residual_obs(self, low_state: dict, high_state: dict) -> np.ndarray:
         return self._build_obs(low_state, high_state)
+
+    def _obs_sections(self, obs: np.ndarray) -> dict:
+        return {
+            "v_local": obs[0:3].tolist(),
+            "w_local": obs[3:6].tolist(),
+            "g_local": obs[6:9].tolist(),
+            "command": obs[9:12].tolist(),
+            "joint_pos_offset": obs[12:24].tolist(),
+            "joint_vel": obs[24:36].tolist(),
+            "last_action": obs[36:48].tolist(),
+            "kin_ref": obs[48:60].tolist(),
+            "anchor_action": obs[60:72].tolist(),
+        }
+
+    def _write_obs_debug(self, anchor_obs: np.ndarray, residual_obs: np.ndarray):
+        payload = {
+            "counter": int(self._counter),
+            "step_idx": int(self._step_idx),
+            "command": self._command.tolist(),
+            "anchor_action": self._anchor_action.tolist(),
+            "last_action": self._last_action.tolist(),
+            "anchor_obs": anchor_obs.tolist(),
+            "residual_obs": residual_obs.tolist(),
+            "anchor_sections": self._obs_sections(anchor_obs),
+            "residual_sections": self._obs_sections(residual_obs),
+        }
+        tmp_path = f"{self._debug_obs_path}.tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f)
+        os.replace(tmp_path, self._debug_obs_path)
 
     def _infer_anchor(self, anchor_obs: np.ndarray) -> np.ndarray:
         actions, _ = self._anchor_policy.run(
@@ -390,6 +443,7 @@ class Go2Joystick2OnnxController:
 
             residual_obs = self._build_residual_obs(low_state, high_state)
             residual_action = self._infer_residual(residual_obs)
+            self._write_obs_debug(anchor_obs, residual_obs)
 
             mixed_action = (
                 self._anchor_action * self._anchor_action_scale
