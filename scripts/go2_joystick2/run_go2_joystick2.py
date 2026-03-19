@@ -1,13 +1,11 @@
 import sys
 import time
 
-import numpy as np
-
 from etils import epath
 
 from unitree_sdk2py.core.channel import ChannelFactoryInitialize
 
-from consts import sim_dt, default_qpos, stand_kp_up, stand_kd
+from consts import sim_dt
 from controller import Go2Joystick2OnnxController
 
 _HERE = epath.Path(__file__).parent
@@ -27,19 +25,15 @@ def main():
 
     input("Press enter to start")
 
-    running_time = 0.0
-    stand_duration = 3.0
-    hold_duration = 1.0
-    target_qpos = default_qpos[7:]
+    standup_done = False
+    standup_duration = 3.0
     while True:
         step_start = time.perf_counter()
-        running_time += sim_dt
 
-        if running_time < stand_duration:
-            phase = np.tanh(running_time / 1.2)
-            controller.stand_control(phase=phase, target_qpos=target_qpos)
-        elif running_time < stand_duration + hold_duration:
-            controller.hold_joint_pos(target_qpos=target_qpos, kp=stand_kp_up, kd=stand_kd)
+        if not standup_done:
+            standup_done = controller.standup_to_default_step(
+                dt=sim_dt, duration=standup_duration
+            )
         else:
             if not controller.shutdown_step(sim_dt):
                 controller.joystick_control()
