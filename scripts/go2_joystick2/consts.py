@@ -27,13 +27,21 @@ idx_map = np.array([3, 4, 5, 0, 1, 2, 9, 10, 11, 6, 7, 8], dtype=np.int32)
 sim_dt = 0.002
 ctrl_dt = 0.02
 
+# Yaw PID (angle -> yaw-rate command)
+yaw_kp = 1.0
+yaw_kd = 0.5
+yaw_w_clip = 0.5
+
 # Joystick2 policy scales from your verified play_go2_joystick2.py.
-action_scale = np.array([0.5, 0.5, 0.5] * 4, dtype=np.float32)
+anchor_action_scale = np.array([0.5, 0.5, 0.5] * 4, dtype=np.float32)
+residual_action_scale = np.array([0.5, 0.8, 0.8] * 4, dtype=np.float32)
 command = np.array([1.0, 0.0, 0.5], dtype=np.float32)
 velocity_is_world_frame = True
-cmd_max_vx = 1.5
-cmd_max_vy = 0.80
-cmd_max_w = 1.2
+imu_gyro_is_body_frame = True
+cmd_max_vx = 0.5
+cmd_max_vy = 0.2
+cmd_max_yaw = 3.141592653589793
+cmd_max_w = yaw_w_clip
 
 # Policy-time PD gains used for lowcmd.
 Kp = 35.0

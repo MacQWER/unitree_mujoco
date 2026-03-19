@@ -19,8 +19,8 @@ def main():
         ChannelFactoryInitialize(0, sys.argv[1])
 
     controller = Go2Joystick2OnnxController(
-        anchor_policy_path=(_ONNX_DIR / "go2_apg2_anchor_policy3.onnx").as_posix(),
-        residual_policy_path=(_ONNX_DIR / "go2_apg2_residual_policy3.onnx").as_posix(),
+        anchor_policy_path=(_ONNX_DIR / "go2_apg2_anchor_policy_new.onnx").as_posix(),
+        residual_policy_path=(_ONNX_DIR / "go2_apg2_residual_policy_new.onnx").as_posix(),
     )
 
     input("Press enter to start")

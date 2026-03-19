@@ -4,7 +4,7 @@ from typing import Optional
 import numpy as np
 import onnxruntime as rt
 
-from TrotUtil import cos_wave, make_kinematic_ref, rotate_inv
+from TrotUtil import cos_wave, make_kinematic_ref, rotate_inv, quaternion_to_matrix
 from consts import (
     default_qpos,
     stand_up_joint_pos,
@@ -12,11 +12,17 @@ from consts import (
     idx_map,
     sim_dt,
     ctrl_dt,
-    action_scale,
+    anchor_action_scale,
+    residual_action_scale,
     velocity_is_world_frame,
+    imu_gyro_is_body_frame,
     cmd_max_vx,
     cmd_max_vy,
     cmd_max_w,
+    cmd_max_yaw,
+    yaw_kp,
+    yaw_kd,
+    yaw_w_clip,
     Kp,
     Kd,
     stand_kp_up,
@@ -37,6 +43,15 @@ from unitree_sdk2py.idl.unitree_go.msg.dds_ import (
 from unitree_sdk2py.utils.crc import CRC
 
 
+def wrap_to_pi(angle: float) -> float:
+    return (angle + np.pi) % (2.0 * np.pi) - np.pi
+
+
+def yaw_from_quat(q: np.ndarray) -> float:
+    R = quaternion_to_matrix(q)
+    return float(np.arctan2(R[1, 0], R[0, 0]))
+
+
 class Go2Joystick2OnnxController:
     """Anchor + residual ONNX controller via Unitree SDK2 low-level API."""
 
@@ -49,8 +64,10 @@ class Go2Joystick2OnnxController:
         )
 
         self._default_angles = default_qpos[7:].astype(np.float32)
-        self._action_scale = action_scale.astype(np.float32)
+        self._anchor_action_scale = anchor_action_scale.astype(np.float32)
+        self._residual_action_scale = residual_action_scale.astype(np.float32)
         self._command = np.zeros(3, dtype=np.float32)
+        self._target_yaw = None
 
         self._last_action = np.zeros(12, dtype=np.float32)
         self._anchor_action = np.zeros(12, dtype=np.float32)
@@ -156,7 +173,16 @@ class Go2Joystick2OnnxController:
             high = None if self.latest_high_state is None else self.latest_high_state.copy()
         return low, high
 
-    def _update_command_from_wireless(self):
+    def _yaw_pd_command(self, low_state: dict, vx: float, vy: float, target_yaw: float) -> np.ndarray:
+        yaw = yaw_from_quat(low_state["imu_quat"])
+        yaw_err = wrap_to_pi(target_yaw - yaw)
+        yaw_rate = float(low_state["imu_gyro"][2])
+
+        w_cmd = yaw_kp * yaw_err - yaw_kd * yaw_rate
+        w_cmd = float(np.clip(w_cmd, -yaw_w_clip, yaw_w_clip))
+        return np.array([vx, vy, w_cmd], dtype=np.float32)
+
+    def _update_command_from_wireless(self, low_state: dict):
         with self.lock:
             if self.latest_wireless is None:
                 return
@@ -166,8 +192,18 @@ class Go2Joystick2OnnxController:
 
         vx = float(np.clip(ly, -1.0, 1.0)) * cmd_max_vx
         vy = float(np.clip(lx, -1.0, 1.0)) * cmd_max_vy
-        w = float(np.clip(rx, -1.0, 1.0)) * cmd_max_w
-        self._command = np.array([vx, vy, w], dtype=np.float32)
+        target_yaw_cmd = float(np.clip(rx, -1.0, 1.0)) * cmd_max_yaw
+
+        if self._target_yaw is None:
+            self._target_yaw = yaw_from_quat(low_state["imu_quat"])
+
+        # Reset target yaw to current heading when R1 is held (替代右摇杆按下)
+        if self._key_pressed("R1"):
+            self._target_yaw = yaw_from_quat(low_state["imu_quat"])
+        else:
+            self._target_yaw = target_yaw_cmd
+
+        self._command = self._yaw_pd_command(low_state, vx, vy, self._target_yaw)
 
     def _key_pressed(self, key_name: str) -> bool:
         bit = self._key_bits[key_name]
@@ -218,24 +254,7 @@ class Go2Joystick2OnnxController:
             np.float32
         )
 
-    def _build_anchor_obs(self, low_state: dict) -> np.ndarray:
-        yaw_rate = np.float32(low_state["imu_gyro"][2] * 0.25)
-        g_local = self._g_local(low_state["imu_quat"])
-        angles = self._joint_angles_mujoco_order(low_state)
-        kin_ref = self._kinematic_ref_qpos[self._step_idx % self._l_cycle]
-
-        obs = np.concatenate(
-            [
-                np.array([yaw_rate], dtype=np.float32),
-                g_local,
-                angles - self._default_angles,
-                self._last_action,
-                kin_ref,
-            ]
-        )
-        return np.clip(obs, -100.0, 100.0).astype(np.float32)
-
-    def _build_residual_obs(self, low_state: dict, high_state: dict) -> np.ndarray:
+    def _build_obs(self, low_state: dict, high_state: dict) -> np.ndarray:
         if high_state is None:
             v_local = np.zeros(3, dtype=np.float32)
         else:
@@ -246,10 +265,14 @@ class Go2Joystick2OnnxController:
             else:
                 v_local = v_raw
 
-        w_local = np.array(low_state["imu_gyro"], dtype=np.float32)
+        if imu_gyro_is_body_frame:
+            w_local = np.array(low_state["imu_gyro"], dtype=np.float32)
+        else:
+            w_local = rotate_inv(np.array(low_state["imu_gyro"], dtype=np.float32), low_state["imu_quat"]).astype(np.float32)
         g_local = self._g_local(low_state["imu_quat"])
         angles = self._joint_angles_mujoco_order(low_state)
         joint_vel = self._joint_vel_mujoco_order(low_state)
+        kin_ref = self._kinematic_ref_qpos[self._step_idx % self._l_cycle]
 
         obs = np.concatenate(
             [
@@ -259,10 +282,23 @@ class Go2Joystick2OnnxController:
                 self._command,
                 angles - self._default_angles,
                 joint_vel,
+                self._last_action,
+                kin_ref,
                 self._anchor_action,
             ]
         )
         return np.clip(obs, -100.0, 100.0).astype(np.float32)
+
+    def _build_anchor_obs(self, low_state: dict, high_state: dict) -> np.ndarray:
+        obs = self._build_obs(low_state, high_state)
+        obs = obs.copy()
+        # Mask command (indices 9-11) and anchor_action (indices 60-71).
+        obs[9:12] = 0.0
+        obs[60:72] = 0.0
+        return obs
+
+    def _build_residual_obs(self, low_state: dict, high_state: dict) -> np.ndarray:
+        return self._build_obs(low_state, high_state)
 
     def _infer_anchor(self, anchor_obs: np.ndarray) -> np.ndarray:
         actions, _ = self._anchor_policy.run(
@@ -347,16 +383,19 @@ class Go2Joystick2OnnxController:
             if low_state is None:
                 return
 
-            self._update_command_from_wireless()
+            self._update_command_from_wireless(low_state)
 
-            anchor_obs = self._build_anchor_obs(low_state)
+            anchor_obs = self._build_anchor_obs(low_state, high_state)
             self._anchor_action = self._infer_anchor(anchor_obs)
 
             residual_obs = self._build_residual_obs(low_state, high_state)
             residual_action = self._infer_residual(residual_obs)
 
-            mixed_action = self._anchor_action + residual_action
-            ctrl = self._default_angles + mixed_action * self._action_scale
+            mixed_action = (
+                self._anchor_action * self._anchor_action_scale
+                + residual_action * self._residual_action_scale
+            )
+            ctrl = self._default_angles + mixed_action
 
             self._write_ctrl(ctrl, kp=Kp, kd=Kd)
             self._last_action = ctrl.astype(np.float32)

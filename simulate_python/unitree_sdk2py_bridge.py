@@ -84,6 +84,8 @@ class UnitreeSdk2Bridge:
             name="sim_wireless_controller",
         )
         self._wireless_thread_started = False
+        if self._use_fixed_wireless_command():
+            self._start_wireless_thread_once()
 
         self.low_cmd_suber = ChannelSubscriber(TOPIC_LOWCMD, LowCmd_)
         self.low_cmd_suber.Init(self.LowCmdHandler, 10)
@@ -247,7 +249,30 @@ class UnitreeSdk2Bridge:
 
         self.high_state_puber.Write(self.high_state)
 
+    def _use_fixed_wireless_command(self):
+        return (not config.USE_JOYSTICK) and (not config.USE_KEYBOARD)
+
     def PublishWirelessController(self):
+        if self._use_fixed_wireless_command():
+            vx = float(config.FIXED_WIRELESS_CMD_VX)
+            vy = float(config.FIXED_WIRELESS_CMD_VY)
+            yaw = float(config.FIXED_WIRELESS_CMD_YAW)
+
+            self.wireless_controller.keys = 0
+            self.wireless_controller.lx = float(
+                np.clip(vy / max(config.KEYBOARD_CMD_MAX_VY, 1e-6), -1.0, 1.0)
+            )
+            self.wireless_controller.ly = float(
+                np.clip(vx / max(config.KEYBOARD_CMD_MAX_VX, 1e-6), -1.0, 1.0)
+            )
+            self.wireless_controller.rx = float(
+                np.clip(yaw / max(config.KEYBOARD_CMD_MAX_YAW, 1e-6), -1.0, 1.0)
+            )
+            self.wireless_controller.ry = 0.0
+
+            self.wireless_controller_puber.Write(self.wireless_controller)
+            return
+
         if self.joystick != None:
             pygame.event.get()
             key_state = [0] * 16

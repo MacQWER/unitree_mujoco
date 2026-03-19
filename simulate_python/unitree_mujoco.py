@@ -76,6 +76,18 @@ def SimulationThread():
     ChannelFactoryInitialize(config.DOMAIN_ID, config.INTERFACE)
     unitree = UnitreeSdk2Bridge(mj_model, mj_data)
 
+    if config.USE_JOYSTICK and config.USE_KEYBOARD:
+        print("Both USE_JOYSTICK and USE_KEYBOARD are enabled; joystick mode takes precedence.")
+    if config.USE_JOYSTICK:
+        print("Wireless command mode: joystick")
+    elif config.USE_KEYBOARD:
+        print("Wireless command mode: keyboard (external publisher)")
+    else:
+        print(
+            "Wireless command mode: fixed "
+            f"(vx={config.FIXED_WIRELESS_CMD_VX}, vy={config.FIXED_WIRELESS_CMD_VY}, yaw={config.FIXED_WIRELESS_CMD_YAW})"
+        )
+
     if config.USE_JOYSTICK:
         unitree.SetupJoystick(device_id=config.JOYSTICK_DEVICE, js_type=config.JOYSTICK_TYPE)
     if config.PRINT_SCENE_INFORMATION:
