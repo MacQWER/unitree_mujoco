@@ -17,11 +17,9 @@ from consts import (
     ctrl_dt,
     anchor_action_scale,
     residual_action_scale,
-    velocity_is_world_frame,
     imu_gyro_is_body_frame,
     cmd_max_vx,
     cmd_max_vy,
-    cmd_max_w,
     cmd_max_yaw,
     yaw_kp,
     yaw_kd,
@@ -31,6 +29,10 @@ from consts import (
     stand_kp_up,
     stand_kp_down,
     stand_kd,
+    obs_w_local_scale,
+    obs_joint_vel_scale,
+    obs_command_slice,
+    obs_anchor_action_slice,
 )
 from obs_debug import DEBUG_OBS_PATH
 
@@ -41,7 +43,6 @@ from unitree_sdk2py.idl.default import (
 from unitree_sdk2py.idl.unitree_go.msg.dds_ import (
     LowCmd_,
     LowState_,
-    SportModeState_,
     WirelessController_,
 )
 from unitree_sdk2py.utils.crc import CRC
@@ -89,7 +90,6 @@ class Go2Joystick2OnnxController:
 
         self.lock = threading.Lock()
         self.latest_low_state = None
-        self.latest_high_state = None
         self.latest_wireless = None
         self._wireless_keys = 0
         self._last_start_select = False
@@ -120,10 +120,8 @@ class Go2Joystick2OnnxController:
         self.crc = CRC()
 
         low_state_suber = ChannelSubscriber("rt/lowstate", LowState_)
-        high_state_suber = ChannelSubscriber("rt/sportmodestate", SportModeState_)
         wireless_suber = ChannelSubscriber("rt/wirelesscontroller", WirelessController_)
         low_state_suber.Init(self.LowStateHandler, 10)
-        high_state_suber.Init(self.HighStateHandler, 10)
         wireless_suber.Init(self.WirelessHandler, 10)
 
         self._key_bits = {
@@ -154,12 +152,6 @@ class Go2Joystick2OnnxController:
                 "motor_dq": np.array([m.dq for m in msg.motor_state[:12]], dtype=np.float32),
             }
 
-    def HighStateHandler(self, msg: SportModeState_):
-        with self.lock:
-            self.latest_high_state = {
-                "velocity": np.array(msg.velocity, dtype=np.float32),
-            }
-
     def WirelessHandler(self, msg: WirelessController_):
         with self.lock:
             self.latest_wireless = {
@@ -171,13 +163,11 @@ class Go2Joystick2OnnxController:
             }
             self._wireless_keys = int(msg.keys)
 
-    def _get_states(self):
+    def _get_low_state(self):
         with self.lock:
             if self.latest_low_state is None:
-                return None, None
-            low = self.latest_low_state.copy()
-            high = None if self.latest_high_state is None else self.latest_high_state.copy()
-        return low, high
+                return None
+            return self.latest_low_state.copy()
 
     def _yaw_pd_command(self, low_state: dict, vx: float, vy: float, target_yaw: float) -> np.ndarray:
         yaw = yaw_from_quat(low_state["imu_quat"])
@@ -260,46 +250,34 @@ class Go2Joystick2OnnxController:
             np.float32
         )
 
-    def _log_missing_state(self, low_state: Optional[dict], high_state: Optional[dict]):
+    def _log_missing_state(self, low_state: Optional[dict]):
         now = time.time()
         if now - self._last_missing_state_log_t < 1.0:
             return
         self._last_missing_state_log_t = now
 
-        missing = []
         if low_state is None:
-            missing.append("low_state")
-        if high_state is None:
-            missing.append("high_state")
-        if missing:
-            print(
-                f"[Go2Joystick2OnnxController] _build_obs missing {', '.join(missing)}"
-            )
+            print("[Go2Joystick2OnnxController] _build_obs missing low_state")
 
-    def _build_obs(self, low_state: dict, high_state: dict) -> np.ndarray:
-        self._log_missing_state(low_state, high_state)
-        if high_state is None:
-            v_local = np.zeros(3, dtype=np.float32)
-        else:
-            # In simulator bridge, sportmodestate.velocity is sourced from frame_vel sensor.
-            v_raw = np.array(high_state["velocity"], dtype=np.float32)
-            if velocity_is_world_frame:
-                v_local = rotate_inv(v_raw, low_state["imu_quat"]).astype(np.float32)
-            else:
-                v_local = v_raw
+    def _build_obs(self, low_state: dict) -> np.ndarray:
+        self._log_missing_state(low_state)
 
         if imu_gyro_is_body_frame:
             w_local = np.array(low_state["imu_gyro"], dtype=np.float32)
         else:
-            w_local = rotate_inv(np.array(low_state["imu_gyro"], dtype=np.float32), low_state["imu_quat"]).astype(np.float32)
+            w_local = rotate_inv(
+                np.array(low_state["imu_gyro"], dtype=np.float32),
+                low_state["imu_quat"],
+            ).astype(np.float32)
+        w_local *= obs_w_local_scale
+
         g_local = self._g_local(low_state["imu_quat"])
         angles = self._joint_angles_mujoco_order(low_state)
-        joint_vel = self._joint_vel_mujoco_order(low_state)
+        joint_vel = self._joint_vel_mujoco_order(low_state) * obs_joint_vel_scale
         kin_ref = self._kinematic_ref_qpos[self._step_idx % self._l_cycle]
 
         obs = np.concatenate(
             [
-                v_local,
                 w_local,
                 g_local,
                 self._command,
@@ -312,28 +290,26 @@ class Go2Joystick2OnnxController:
         )
         return np.clip(obs, -100.0, 100.0).astype(np.float32)
 
-    def _build_anchor_obs(self, low_state: dict, high_state: dict) -> np.ndarray:
-        obs = self._build_obs(low_state, high_state)
+    def _build_anchor_obs(self, low_state: dict) -> np.ndarray:
+        obs = self._build_obs(low_state)
         obs = obs.copy()
-        # Mask command (indices 9-11) and anchor_action (indices 60-71).
-        obs[9:12] = 0.0
-        obs[60:72] = 0.0
+        obs[obs_command_slice] = 0.0
+        obs[obs_anchor_action_slice] = 0.0
         return obs
 
-    def _build_residual_obs(self, low_state: dict, high_state: dict) -> np.ndarray:
-        return self._build_obs(low_state, high_state)
+    def _build_residual_obs(self, low_state: dict) -> np.ndarray:
+        return self._build_obs(low_state)
 
     def _obs_sections(self, obs: np.ndarray) -> dict:
         return {
-            "v_local": obs[0:3].tolist(),
-            "w_local": obs[3:6].tolist(),
-            "g_local": obs[6:9].tolist(),
-            "command": obs[9:12].tolist(),
-            "joint_pos_offset": obs[12:24].tolist(),
-            "joint_vel": obs[24:36].tolist(),
-            "last_action": obs[36:48].tolist(),
-            "kin_ref": obs[48:60].tolist(),
-            "anchor_action": obs[60:72].tolist(),
+            "w_local": obs[0:3].tolist(),
+            "g_local": obs[3:6].tolist(),
+            "command": obs[6:9].tolist(),
+            "joint_pos_offset": obs[9:21].tolist(),
+            "joint_vel": obs[21:33].tolist(),
+            "last_action": obs[33:45].tolist(),
+            "kin_ref": obs[45:57].tolist(),
+            "anchor_action": obs[57:69].tolist(),
         }
 
     def _write_obs_debug(self, anchor_obs: np.ndarray, residual_obs: np.ndarray):
@@ -411,7 +387,7 @@ class Go2Joystick2OnnxController:
         self.pub.Write(self.cmd)
 
     def standup_to_default_step(self, dt: float, duration: float) -> bool:
-        low_state, _ = self._get_states()
+        low_state = self._get_low_state()
         if low_state is None:
             return False
 
@@ -432,16 +408,16 @@ class Go2Joystick2OnnxController:
 
     def joystick_control(self):
         if self._counter % self._n_substeps == 0:
-            low_state, high_state = self._get_states()
+            low_state = self._get_low_state()
             if low_state is None:
                 return
 
             self._update_command_from_wireless(low_state)
 
-            anchor_obs = self._build_anchor_obs(low_state, high_state)
+            anchor_obs = self._build_anchor_obs(low_state)
             self._anchor_action = self._infer_anchor(anchor_obs)
 
-            residual_obs = self._build_residual_obs(low_state, high_state)
+            residual_obs = self._build_residual_obs(low_state)
             residual_action = self._infer_residual(residual_obs)
             self._write_obs_debug(anchor_obs, residual_obs)
 

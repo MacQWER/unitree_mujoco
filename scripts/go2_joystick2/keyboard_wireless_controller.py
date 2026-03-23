@@ -15,7 +15,6 @@ from unitree_sdk2py.core.channel import (
 from unitree_sdk2py.idl.default import unitree_go_msg_dds__WirelessController_
 from unitree_sdk2py.idl.unitree_go.msg.dds_ import (
     LowState_,
-    SportModeState_,
     WirelessController_,
 )
 
@@ -58,7 +57,6 @@ KEY_BITS = {
 }
 
 OBS_SECTION_ORDER = [
-    ("v_local", "v_local"),
     ("w_local", "w_local"),
     ("g_local", "g_local"),
     ("command", "command"),
@@ -155,7 +153,6 @@ class StateDebugCache:
     def __init__(self):
         self._lock = threading.Lock()
         self._low_state = None
-        self._high_state = None
 
     def update_low_state(self, msg: LowState_):
         motor_q = [float(m.q) for m in msg.motor_state[:12]]
@@ -169,18 +166,9 @@ class StateDebugCache:
                 "motor_dq_head": motor_dq[:3],
             }
 
-    def update_high_state(self, msg: SportModeState_):
-        with self._lock:
-            self._high_state = {
-                "position": [float(v) for v in msg.position],
-                "velocity": [float(v) for v in msg.velocity],
-            }
-
     def snapshot(self):
         with self._lock:
-            low_state = None if self._low_state is None else dict(self._low_state)
-            high_state = None if self._high_state is None else dict(self._high_state)
-        return low_state, high_state
+            return None if self._low_state is None else dict(self._low_state)
 
 
 def _render_obs_panel(screen, font, title_font, snapshot, error, mode, top_y):
@@ -227,35 +215,15 @@ def _render_obs_panel(screen, font, title_font, snapshot, error, mode, top_y):
         top_y += 22
 
 
-def _render_state_panel(screen, font, title_font, low_state, high_state, top_y):
+def _render_state_panel(screen, font, title_font, low_state, top_y):
     _render_line(
         screen,
         title_font,
-        "DDS Debug [rt/sportmodestate + rt/lowstate]",
+        "DDS Debug [rt/lowstate]",
         top_y,
         color=(255, 220, 120),
     )
     top_y += 26
-
-    if high_state is None:
-        _render_line(screen, font, "rt/sportmodestate: waiting", top_y, color=(255, 120, 120))
-    else:
-        _render_line(
-            screen,
-            font,
-            f"high.position      {_fmt_triplet(high_state['position'])}",
-            top_y,
-            color=(180, 220, 255),
-        )
-        top_y += 22
-        _render_line(
-            screen,
-            font,
-            f"high.velocity      {_fmt_triplet(high_state['velocity'])}",
-            top_y,
-            color=(180, 220, 255),
-        )
-    top_y += 30
 
     if low_state is None:
         _render_line(screen, font, "rt/lowstate: waiting", top_y, color=(255, 120, 120))
@@ -296,9 +264,7 @@ def main():
     state_cache = StateDebugCache()
 
     low_state_sub = ChannelSubscriber("rt/lowstate", LowState_)
-    high_state_sub = ChannelSubscriber("rt/sportmodestate", SportModeState_)
     low_state_sub.Init(state_cache.update_low_state, 10)
-    high_state_sub.Init(state_cache.update_high_state, 10)
 
     pygame.init()
     pygame.display.set_caption("Go2 Keyboard Wireless Controller + OBS Debug")
@@ -354,7 +320,7 @@ def main():
         pub.Write(msg)
 
         snapshot, error = debug_reader.poll()
-        low_state, high_state = state_cache.snapshot()
+        low_state = state_cache.snapshot()
 
         screen.fill((10, 10, 10))
         _render_line(screen, title_font, "Keyboard -> rt/wirelesscontroller", 10, color=(120, 220, 180))
@@ -384,7 +350,7 @@ def main():
             color=(160, 160, 160),
         )
         _render_obs_panel(screen, font, title_font, snapshot, error, obs_mode, 150)
-        _render_state_panel(screen, font, title_font, low_state, high_state, 410)
+        _render_state_panel(screen, font, title_font, low_state, 410)
 
         pygame.display.flip()
         clock.tick(50)
