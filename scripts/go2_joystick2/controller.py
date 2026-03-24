@@ -60,10 +60,18 @@ def yaw_from_quat(q: np.ndarray) -> float:
 class Go2Joystick2OnnxController:
     """Anchor + residual ONNX controller via Unitree SDK2 low-level API."""
 
-    def __init__(self, anchor_policy_path: str, residual_policy_path: str):
-        self._anchor_policy = rt.InferenceSession(
-            anchor_policy_path, providers=["CPUExecutionProvider"]
-        )
+    def __init__(
+        self,
+        anchor_policy_path: str,
+        residual_policy_path: str,
+        use_anchor_policy: bool = True,
+    ):
+        self._use_anchor_policy = bool(use_anchor_policy)
+        self._anchor_policy = None
+        if self._use_anchor_policy:
+            self._anchor_policy = rt.InferenceSession(
+                anchor_policy_path, providers=["CPUExecutionProvider"]
+            )
         self._residual_policy = rt.InferenceSession(
             residual_policy_path, providers=["CPUExecutionProvider"]
         )
@@ -330,6 +338,8 @@ class Go2Joystick2OnnxController:
         os.replace(tmp_path, self._debug_obs_path)
 
     def _infer_anchor(self, anchor_obs: np.ndarray) -> np.ndarray:
+        if self._anchor_policy is None:
+            return np.zeros(12, dtype=np.float32)
         actions, _ = self._anchor_policy.run(
             ["actions", "std"], {"obs": anchor_obs.reshape(1, -1)}
         )
@@ -415,7 +425,10 @@ class Go2Joystick2OnnxController:
             self._update_command_from_wireless(low_state)
 
             anchor_obs = self._build_anchor_obs(low_state)
-            self._anchor_action = self._infer_anchor(anchor_obs)
+            if self._use_anchor_policy:
+                self._anchor_action = self._infer_anchor(anchor_obs)
+            else:
+                self._anchor_action.fill(0.0)
 
             residual_obs = self._build_residual_obs(low_state)
             residual_action = self._infer_residual(residual_obs)

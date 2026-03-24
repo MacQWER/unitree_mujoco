@@ -10,6 +10,9 @@ from controller import Go2Joystick2OnnxController
 
 _HERE = epath.Path(__file__).parent
 _ONNX_DIR = _HERE / ".." / ".." / "onnx"
+_ANCHOR_POLICY_DEFAULT = (_ONNX_DIR / "go2_apg2_anchor_policy_newnew.onnx").as_posix()
+_RESIDUAL_POLICY_DEFAULT = (_ONNX_DIR / "go2_apg2_residual_policy_newnew.onnx").as_posix()
+_RESIDUAL_POLICY_SINGLE_DEFAULT = (_ONNX_DIR / "go2_apg2_residual_policy_single.onnx").as_posix()
 
 
 def _parse_args():
@@ -35,13 +38,18 @@ def _parse_args():
     )
     parser.add_argument(
         "--anchor-policy",
-        default=(_ONNX_DIR / "go2_apg2_anchor_policy_newnew.onnx").as_posix(),
+        default=_ANCHOR_POLICY_DEFAULT,
         help="Path to anchor policy ONNX.",
     )
     parser.add_argument(
         "--residual-policy",
-        default=(_ONNX_DIR / "go2_apg2_residual_policy_newnew.onnx").as_posix(),
-        help="Path to residual policy ONNX.",
+        default=None,
+        help="Path to residual policy ONNX. Defaults depend on whether anchor policy is enabled.",
+    )
+    parser.add_argument(
+        "--disable-anchor-policy",
+        action="store_true",
+        help="Disable the anchor policy and run only the residual policy.",
     )
     parser.add_argument(
         "--standup-duration",
@@ -77,16 +85,27 @@ def main():
     args = _parse_args()
     domain_id, interface = _init_channel(args.mode, args.interface, args.domain_id)
 
+    use_anchor_policy = not args.disable_anchor_policy
+    residual_policy_path = args.residual_policy
+    if residual_policy_path is None:
+        residual_policy_path = (
+            _RESIDUAL_POLICY_DEFAULT
+            if use_anchor_policy
+            else _RESIDUAL_POLICY_SINGLE_DEFAULT
+        )
+
     controller = Go2Joystick2OnnxController(
         anchor_policy_path=args.anchor_policy,
-        residual_policy_path=args.residual_policy,
+        residual_policy_path=residual_policy_path,
+        use_anchor_policy=use_anchor_policy,
     )
 
     print(
         f"Starting go2_joystick2 mode={args.mode} domain_id={domain_id} interface={interface or 'default'}"
     )
     print(f"Anchor policy: {args.anchor_policy}")
-    print(f"Residual policy: {args.residual_policy}")
+    print(f"Anchor policy enabled: {use_anchor_policy}")
+    print(f"Residual policy: {residual_policy_path}")
     input("Press enter to start")
 
     standup_done = bool(args.no_standup)
