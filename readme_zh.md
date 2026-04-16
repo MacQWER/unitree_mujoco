@@ -316,3 +316,17 @@ source ~/unitree_ros2/setup.sh # 使用机器人连接的网卡
 export ROS_DOMAIN_ID=0 # 使用默认的 domain id 
 ./install/stand_go2/bin/stand_go2 # 运行
 ```
+
+## 修改后命令
+
+sim2sim
+
+```bash
+python run_go2_joystick2.py --mode sim --residual-policy ../../onnx/go2_apg_stop_and_go.onnx --disable-anchor-policy
+```
+
+sim2real
+
+```bash
+python3 run_go2_joystick2.py --mode real --interface enp3s0 --residual-policy ../../onnx/go2_apg_stop_and_go.onnx --disable-anchor-policy
+```

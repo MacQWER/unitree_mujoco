@@ -62,3 +62,10 @@ Kd = 0.5
 stand_kp_up = 60.0
 stand_kp_down = 20.0
 stand_kd = 3.5
+
+# Gait phase 相关（与 JoystickGo2 环境对齐）
+obs_gait_phase_slice = slice(69, 71)  # gait_phase [sin(θ), cos(θ)]
+
+# 静止判断阈值
+stationary_cmd_threshold = 0.01
+stationary_w_cmd_threshold = 0.05

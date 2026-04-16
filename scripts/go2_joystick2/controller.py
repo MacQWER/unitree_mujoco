@@ -33,6 +33,8 @@ from consts import (
     obs_joint_vel_scale,
     obs_command_slice,
     obs_anchor_action_slice,
+    stationary_cmd_threshold,
+    stationary_w_cmd_threshold,
 )
 from obs_debug import DEBUG_OBS_PATH
 
@@ -95,6 +97,9 @@ class Go2Joystick2OnnxController:
         )
         self._step_idx = 0
         self._l_cycle = self._kinematic_ref_qpos.shape[0]
+
+        self._gait_step = 0  # 用于 gait_phase 计算，静止时清零
+        self._is_stationary = True  # 初始状态设为静止
 
         self.lock = threading.Lock()
         self.latest_low_state = None
@@ -267,6 +272,20 @@ class Go2Joystick2OnnxController:
         if low_state is None:
             print("[Go2Joystick2OnnxController] _build_obs missing low_state")
 
+    def _update_stationary_and_gait_step(self):
+        """更新静止状态和 gait_step（与 JoystickGo2 环境对齐，randomize_gait_phase_on_resume=False）"""
+        cmd_norm = float(np.linalg.norm(self._command[:2]))
+        w_cmd = float(np.abs(self._command[2]))
+
+        self._is_stationary = (cmd_norm < stationary_cmd_threshold) and \
+                              (w_cmd < stationary_w_cmd_threshold)
+
+        # 静止时清零，运动时递增（不随机化相位）
+        if self._is_stationary:
+            self._gait_step = 0
+        else:
+            self._gait_step += 1
+
     def _build_obs(self, low_state: dict) -> np.ndarray:
         self._log_missing_state(low_state)
 
@@ -282,7 +301,16 @@ class Go2Joystick2OnnxController:
         g_local = self._g_local(low_state["imu_quat"])
         angles = self._joint_angles_mujoco_order(low_state)
         joint_vel = self._joint_vel_mujoco_order(low_state) * obs_joint_vel_scale
-        kin_ref = self._kinematic_ref_qpos[self._step_idx % self._l_cycle]
+
+        # 使用 gait_step 计算 kin_ref（静止时 gait_step=0，kin_ref=default_angles）
+        kin_ref = self._kinematic_ref_qpos[self._gait_step % self._l_cycle]
+
+        # 计算 gait_phase [sin(θ), cos(θ)]
+        if self._is_stationary:
+            gait_phase = np.zeros(2, dtype=np.float32)
+        else:
+            phase = 2.0 * np.pi * self._gait_step / self._l_cycle
+            gait_phase = np.array([np.sin(phase), np.cos(phase)], dtype=np.float32)
 
         obs = np.concatenate(
             [
@@ -294,6 +322,7 @@ class Go2Joystick2OnnxController:
                 self._last_action,
                 kin_ref,
                 self._anchor_action,
+                gait_phase,  # 新增：gait_phase (2 维)
             ]
         )
         return np.clip(obs, -100.0, 100.0).astype(np.float32)
@@ -318,6 +347,7 @@ class Go2Joystick2OnnxController:
             "last_action": obs[33:45].tolist(),
             "kin_ref": obs[45:57].tolist(),
             "anchor_action": obs[57:69].tolist(),
+            "gait_phase": obs[69:71].tolist(),  # 新增
         }
 
     def _write_obs_debug(self, anchor_obs: np.ndarray, residual_obs: np.ndarray):
@@ -423,6 +453,7 @@ class Go2Joystick2OnnxController:
                 return
 
             self._update_command_from_wireless(low_state)
+            self._update_stationary_and_gait_step()  # 更新静止状态和 gait_step
 
             anchor_obs = self._build_anchor_obs(low_state)
             if self._use_anchor_policy:
