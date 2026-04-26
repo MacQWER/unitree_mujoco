@@ -24,6 +24,7 @@ from consts import (
     yaw_kp,
     yaw_kd,
     yaw_w_clip,
+    yaw_err_threshold,
     Kp,
     Kd,
     stand_kp_up,
@@ -187,6 +188,10 @@ class Go2Joystick2OnnxController:
         yaw_err = wrap_to_pi(target_yaw - yaw)
         yaw_rate = float(low_state["imu_gyro"][2])
 
+        # yaw误差死区：误差小于阈值时停止转向
+        if abs(yaw_err) < yaw_err_threshold:
+            yaw_err = 0.0
+
         w_cmd = yaw_kp * yaw_err - yaw_kd * yaw_rate
         w_cmd = float(np.clip(w_cmd, -yaw_w_clip, yaw_w_clip))
         return np.array([vx, vy, w_cmd], dtype=np.float32)
@@ -209,7 +214,7 @@ class Go2Joystick2OnnxController:
         # Reset target yaw to current heading when R1 is held (替代右摇杆按下)
         if self._key_pressed("R1"):
             self._target_yaw = yaw_from_quat(low_state["imu_quat"])
-        else:
+        elif abs(rx) > 0.01:  # 只有 rx 有输入时才更新目标航向
             self._target_yaw = target_yaw_cmd
 
         self._command = self._yaw_pd_command(low_state, vx, vy, self._target_yaw)

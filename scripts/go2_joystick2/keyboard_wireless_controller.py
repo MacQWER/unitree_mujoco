@@ -4,6 +4,7 @@ import sys
 import time
 import threading
 
+import numpy as np
 import pygame
 
 from obs_debug import DEBUG_OBS_PATH
@@ -17,6 +18,7 @@ from unitree_sdk2py.idl.unitree_go.msg.dds_ import (
     LowState_,
     WirelessController_,
 )
+from TrotUtil import quaternion_to_matrix
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.abspath(os.path.join(_HERE, "..", ".."))
@@ -76,6 +78,12 @@ def _safe_div(value, denom):
     if denom <= 0:
         return 0.0
     return _clamp(value / denom, -1.0, 1.0)
+
+
+def _yaw_from_quat(q: np.ndarray) -> float:
+    """从四元数提取 yaw 角度"""
+    R = quaternion_to_matrix(q)
+    return float(np.arctan2(R[1, 0], R[0, 0]))
 
 
 def _build_key_value(keys):
@@ -291,7 +299,13 @@ def main():
                 elif event.key == pygame.K_SPACE:
                     vx = 0.0
                     vy = 0.0
-                    w = 0.0
+                    # 重置 w 为当前 yaw，而不是 0
+                    low_state = state_cache.snapshot()
+                    if low_state is not None:
+                        q = np.array(low_state["imu_quat"], dtype=np.float32)
+                        w = _yaw_from_quat(q)
+                    else:
+                        w = 0.0
                 elif event.key == pygame.K_TAB:
                     obs_mode = "anchor" if obs_mode == "residual" else "residual"
                 elif event.key == pygame.K_w:

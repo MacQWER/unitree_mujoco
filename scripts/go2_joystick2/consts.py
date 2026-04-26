@@ -45,6 +45,7 @@ obs_anchor_action_slice = slice(57, 69)
 yaw_kp = 1.0
 yaw_kd = 0.5
 yaw_w_clip = 0.5
+yaw_err_threshold = 0.2  # rad, yaw误差死区
 
 # Joystick2 policy scales aligned with JoystickGo2.default_config().
 anchor_action_scale = np.array([0.3, 0.5, 0.5] * 4, dtype=np.float32)
