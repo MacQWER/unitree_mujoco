@@ -322,11 +322,20 @@ export ROS_DOMAIN_ID=0 # 使用默认的 domain id
 sim2sim
 
 ```bash
+python unitree_mujoco.py
+```
+
+
+```bash
 python run_go2_joystick2.py --mode sim --residual-policy ../../onnx/go2_apg_stop_and_go.onnx --disable-anchor-policy
 ```
 
 sim2real
 
 ```bash
-python3 run_go2_joystick2.py --mode real --interface enp3s0 --residual-policy ../../onnx/go2_apg_stop_and_go.onnx --disable-anchor-policy
+python3 run_go2_joystick2.py --mode real --interface enp49s0 --residual-policy ../../onnx/go2_apg_stop_and_go.onnx --disable-anchor-policy
+```
+
+```bash
+python keyboard_wireless_controller.py enp49s0
 ```
